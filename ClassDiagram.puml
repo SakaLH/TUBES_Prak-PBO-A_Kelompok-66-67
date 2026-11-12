@@ -1,0 +1,221 @@
+@startuml EsportBracketApiClassDiagram
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+title Class Diagram - Esport Bracket API (Spring Boot)
+
+' ========== CONTROLLER LAYER ==========
+package "Controller Layer" {
+  class TournamentController <<@RestController>> {
+    - matchService : MatchService
+    + TournamentController(matchService : MatchService)
+    + getParticipants() : List<Participant>
+    + registerSolo(request : SoloPlayer) : SoloPlayer
+    + registerTeam(request : EsportTeam) : EsportTeam
+    + getMatches() : List<MatchSeries>
+    + getMatch(matchId : String) : MatchSeries
+    + scheduleMatch(request : MatchSeries) : MatchSeries
+    + updatePhase(matchId : String, phase : MatchPhase) : MatchSeries
+    + recordRound(matchId : String, roundNumber : int, scoreA : int, scoreB : int) : MatchSeries
+    + getStandings() : Map<String, Integer>
+  }
+}
+
+' ========== SERVICE LAYER ==========
+package "Service Layer" {
+  class MatchService <<@Service>> {
+    - matchRepository : MatchRepository
+    - pointRules : Map<String, StandingsPointRule>
+    + MatchService(matchRepository : MatchRepository, pointRules : Map<String, StandingsPointRule>)
+    + getAllParticipants() : List<Participant>
+    + registerSoloPlayer(player : SoloPlayer) : SoloPlayer
+    + registerEsportTeam(team : EsportTeam) : EsportTeam
+    + getAllMatches() : List<MatchSeries>
+    + getMatchById(matchId : String) : MatchSeries
+    + scheduleMatch(match : MatchSeries) : MatchSeries
+    + updateMatchPhase(matchId : String, phase : MatchPhase) : MatchSeries
+    + recordRoundResult(matchId : String, roundNumber : int, scoreA : int, scoreB : int) : MatchSeries
+    + getStandings() : Map<String, Integer>
+  }
+}
+
+' ========== REPOSITORY LAYER ==========
+package "Repository Layer" {
+  interface MatchRepository <<interface>> {
+    + findAllParticipants() : List<Participant>
+    + saveParticipant(participant : Participant) : Participant
+    + findAllMatches() : List<MatchSeries>
+    + findMatchById(matchId : String) : Optional<MatchSeries>
+    + saveMatch(match : MatchSeries) : MatchSeries
+  }
+
+  class InMemoryMatchRepository <<@Repository>> {
+    - participants : Map<String, Participant>
+    - matches : Map<String, MatchSeries>
+    + InMemoryMatchRepository()
+    + findAllParticipants() : List<Participant>
+    + saveParticipant(participant : Participant) : Participant
+    + findAllMatches() : List<MatchSeries>
+    + findMatchById(matchId : String) : Optional<MatchSeries>
+    + saveMatch(match : MatchSeries) : MatchSeries
+    - seedDummyData() : void
+  }
+}
+
+' ========== DOMAIN: PARTICIPANT HIERARCHY ==========
+package "Domain Model" {
+  abstract class Participant {
+    - id : String
+    - displayName : String
+    - region : String
+    + getId() : String
+    + getDisplayName() : String
+    + getRegion() : String
+    + {abstract} getCategory() : String
+    + {abstract} validateRosterRule() : void
+  }
+
+  class SoloPlayer {
+    - inGameId : String
+    - rankTier : String
+    + getInGameId() : String
+    + getRankTier() : String
+    + getCategory() : String
+    + validateRosterRule() : void
+  }
+
+  class EsportTeam {
+    - rosterSize : int
+    - captainName : String
+    + getRosterSize() : int
+    + getCaptainName() : String
+    + getCategory() : String
+    + validateRosterRule() : void
+  }
+
+  class MatchSeries {
+    - matchId : String
+    - tournamentStage : String
+    - bestOf : int
+    - participantA : Participant
+    - participantB : Participant
+    - rounds : List<GameRound>
+    - phase : MatchPhase
+    + recordRound(roundNumber : int, scoreA : int, scoreB : int) : void
+    + getParticipantAWins() : int
+    + getParticipantBWins() : int
+    + getSeriesWinnerId() : String
+    + getMatchId() : String
+    + getPhase() : MatchPhase
+  }
+
+  class GameRound {
+    - roundNumber : int
+    - participantAScore : int
+    - participantBScore : int
+    - durationMinutes : int
+    - roundWinnerId : String
+    ~ GameRound(roundNumber : int, participantAScore : int, participantBScore : int, durationMinutes : int, roundWinnerId : String)
+    + getRoundNumber() : int
+    + getParticipantAScore() : int
+    + getParticipantBScore() : int
+    + getDurationMinutes() : int
+    + getRoundWinnerId() : String
+  }
+
+  enum MatchPhase {
+    SCHEDULED
+    LIVE
+    DISPUTED
+    FINISHED
+    + allowsScoreInput() : boolean
+    + requiresAdminReview() : boolean
+  }
+}
+
+' ========== STRATEGY: STANDINGS POINT RULE ==========
+package "Strategy" {
+  interface StandingsPointRule <<interface>> {
+    + getRuleName() : String
+    + computePoints(wins : int, losses : int, roundDiff : int) : int
+  }
+
+  class GroupStagePointRule <<@Component>> {
+    + getRuleName() : String
+    + computePoints(wins : int, losses : int, roundDiff : int) : int
+  }
+
+  class PlayoffBonusPointRule <<@Component>> {
+    + getRuleName() : String
+    + computePoints(wins : int, losses : int, roundDiff : int) : int
+  }
+}
+
+' ========== EXCEPTION LAYER ==========
+package "Exception Handling" {
+  class MatchNotFoundException <<RuntimeException>> {
+    - matchId : String
+    + MatchNotFoundException(matchId : String)
+    + getMatchId() : String
+  }
+
+  class RosterIneligibleException <<RuntimeException>> {
+    - participantId : String
+    - violationDetail : String
+    + RosterIneligibleException(participantId : String, violationDetail : String)
+    + getParticipantId() : String
+    + getViolationDetail() : String
+  }
+
+  class MatchPhaseViolationException <<RuntimeException>> {
+    - matchId : String
+    - currentPhase : MatchPhase
+    - attemptedAction : String
+    + MatchPhaseViolationException(matchId : String, currentPhase : MatchPhase, attemptedAction : String)
+    + getMatchId() : String
+    + getCurrentPhase() : MatchPhase
+    + getAttemptedAction() : String
+  }
+
+  class GlobalExceptionHandler <<@RestControllerAdvice>> {
+    + handleMatchNotFound(ex : MatchNotFoundException) : ResponseEntity<Map<String, Object>>
+    + handleRosterIneligible(ex : RosterIneligibleException) : ResponseEntity<Map<String, Object>>
+    + handlePhaseViolation(ex : MatchPhaseViolationException) : ResponseEntity<Map<String, Object>>
+  }
+}
+
+' ========== RELATIONSHIPS ==========
+
+' Layer dependencies (constructor injection)
+TournamentController --> MatchService : matchService
+MatchService --> MatchRepository : matchRepository
+MatchService --> StandingsPointRule : pointRules (Map)
+
+' Realization
+MatchRepository <|.. InMemoryMatchRepository
+StandingsPointRule <|.. GroupStagePointRule
+StandingsPointRule <|.. PlayoffBonusPointRule
+
+' Inheritance
+Participant <|-- SoloPlayer
+Participant <|-- EsportTeam
+
+' Repository menyimpan domain
+InMemoryMatchRepository --> Participant : participants (Map)
+InMemoryMatchRepository --> MatchSeries : matches (Map)
+
+' Association & Composition
+MatchSeries --> Participant : participantA
+MatchSeries --> Participant : participantB
+MatchSeries --> MatchPhase : phase
+MatchSeries *-- "1..*" GameRound : rounds
+
+' Exception handler
+GlobalExceptionHandler ..> MatchNotFoundException : handles
+GlobalExceptionHandler ..> RosterIneligibleException : handles
+GlobalExceptionHandler ..> MatchPhaseViolationException : handles
+MatchPhaseViolationException --> MatchPhase : currentPhase
+
+@enduml

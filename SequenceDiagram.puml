@@ -1,0 +1,88 @@
+@startuml RoundResultRecording
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam ParticipantPadding 20
+skinparam BoxPadding 10
+
+title Sequence Diagram - Pencatatan Hasil Ronde (POST /api/tournament/matches/{matchId}/rounds)
+
+actor Client
+participant TournamentController
+participant MatchService
+participant MatchRepository
+participant MatchSeries
+participant MatchPhase
+participant GameRound
+participant GlobalExceptionHandler
+
+Client -> TournamentController : POST /api/tournament/matches/{matchId}/rounds\n{participantAScore, participantBScore, durationMinutes}
+activate TournamentController
+
+TournamentController -> MatchService : recordRoundResult(matchId, scoreA, scoreB, duration)
+activate MatchService
+
+MatchService -> MatchRepository : findMatchById(matchId)
+activate MatchRepository
+MatchRepository --> MatchService : Optional<MatchSeries>
+deactivate MatchRepository
+
+alt Data match tidak ditemukan
+    MatchService -> MatchService : throw new MatchNotFoundException(matchId)
+    MatchService ->> GlobalExceptionHandler : MatchNotFoundException
+    deactivate MatchService
+    activate GlobalExceptionHandler
+    GlobalExceptionHandler -> GlobalExceptionHandler : handleMatchNotFound(ex)
+    GlobalExceptionHandler --> Client : HTTP 404 Not Found (JSON)
+    deactivate GlobalExceptionHandler
+    deactivate TournamentController
+
+else Data match ditemukan
+    activate MatchService
+    MatchService -> MatchSeries : recordRound(scoreA, scoreB, duration)
+    activate MatchSeries
+
+    MatchSeries -> MatchPhase : allowsScoreInput()
+    activate MatchPhase
+    MatchPhase --> MatchSeries : boolean
+    deactivate MatchPhase
+
+    alt allowsScoreInput() == false (fase bukan LIVE)
+        MatchSeries -> MatchSeries : throw new MatchPhaseViolationException\n(matchId, phase, "RECORD_ROUND_SCORE")
+        MatchSeries ->> GlobalExceptionHandler : MatchPhaseViolationException
+        deactivate MatchSeries
+        deactivate MatchService
+        activate GlobalExceptionHandler
+        GlobalExceptionHandler -> GlobalExceptionHandler : handlePhaseViolation(ex)
+        GlobalExceptionHandler --> Client : HTTP 409 Conflict (JSON)
+        deactivate GlobalExceptionHandler
+        deactivate TournamentController
+
+    else allowsScoreInput() == true (fase LIVE)
+        activate MatchService
+        activate MatchSeries
+        MatchSeries -> GameRound ** : new GameRound(roundNumber, scoreA, scoreB, duration, roundWinnerId)
+        note right of GameRound : Composition:\nGameRound dibuat dan dimiliki\noleh MatchSeries
+        MatchSeries -> MatchSeries : rounds.add(gameRound)
+
+        opt Kemenangan salah satu peserta mencapai batas bestOf
+            MatchSeries -> MatchSeries : phase = MatchPhase.FINISHED
+        end
+
+        MatchSeries --> MatchService : GameRound
+        deactivate MatchSeries
+
+        MatchService -> MatchRepository : saveMatch(series)
+        activate MatchRepository
+        MatchRepository --> MatchService : MatchSeries
+        deactivate MatchRepository
+
+        MatchService --> TournamentController : GameRound
+        deactivate MatchService
+
+        TournamentController --> Client : HTTP 201 Created (JSON GameRound)
+        deactivate TournamentController
+    end
+end
+
+@enduml
