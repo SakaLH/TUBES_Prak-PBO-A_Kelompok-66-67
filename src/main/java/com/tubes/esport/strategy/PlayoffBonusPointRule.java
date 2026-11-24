@@ -4,7 +4,6 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class PlayoffBonusPointRule implements StandingsPointRule {
-    private static final int CLEAN_SWEEP_BONUS = 2;
 
     @Override
     public String getRuleName() {
@@ -12,12 +11,14 @@ public class PlayoffBonusPointRule implements StandingsPointRule {
     }
 
     @Override
-    public int computePoints(int wins, int losses, int roundDiff) {
-        if (wins == 0 && losses == 0) {
+    public int computePoints(int matchWins, int matchLosses, int roundDiff) {
+        // Sesuaikan rumus poin + bonus playoff 
+        // menang dapat 3 poin + bonus dari selisih ronde positif
+        if (matchWins > matchLosses) {
+            return 3 + Math.max(0, roundDiff);
+        } else if (matchWins == matchLosses) {
             return 1;
         }
-        int basePoints = wins * 3;
-        boolean cleanSweep = wins > 0 && losses == 0 && roundDiff >= 2;
-        return cleanSweep ? basePoints + CLEAN_SWEEP_BONUS : basePoints;
+        return 0;
     }
 }

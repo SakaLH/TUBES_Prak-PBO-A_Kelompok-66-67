@@ -11,10 +11,14 @@ public class GroupStagePointRule implements StandingsPointRule {
     }
 
     @Override
-    public int computePoints(int wins, int losses, int roundDiff) {
-        if (wins == 0 && losses == 0) {
-            return 1; // Seri
+    public int computePoints(int matchWins, int matchLosses, int roundDiff) {
+        // Sesuaikan rumus poin babak grup 
+        // menang dapat 3 poin, seri 1 poin, kalah 0 poin
+        if (matchWins > matchLosses) {
+            return 3;
+        } else if (matchWins == matchLosses) {
+            return 1;
         }
-        return wins * 3; // Menang 3 poin, kalah 0 poin
+        return 0;
     }
 }
